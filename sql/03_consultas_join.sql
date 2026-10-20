@@ -1,0 +1,131 @@
+-- ================================================================
+-- SEMANA 6: CONSULTAS CON JOIN - MARKETPLACE
+-- ORACLE XE 21c | Formateado para CMD
+-- ================================================================
+
+SET LINESIZE 200
+SET PAGESIZE 50
+SET WRAP OFF
+
+
+-- ──────────────────────────────────────────────────────────────
+-- REPORTE 1: Detalle completo de pedido
+-- cliente + productos + vendedor + pago + envio
+-- ──────────────────────────────────────────────────────────────
+COLUMN ID_PEDIDO       FORMAT 99999        HEADING 'ID'
+COLUMN CLIENTE         FORMAT A20          HEADING 'CLIENTE'
+COLUMN PRODUCTO        FORMAT A22          HEADING 'PRODUCTO'
+COLUMN CANTIDAD        FORMAT 999          HEADING 'CANT'
+COLUMN SUBTOTAL        FORMAT 999,999,999  HEADING 'SUBTOTAL'
+COLUMN VENDEDOR        FORMAT A18          HEADING 'VENDEDOR'
+COLUMN METODO_PAGO     FORMAT A14          HEADING 'METODO PAGO'
+COLUMN ESTADO_ENVIO    FORMAT A12          HEADING 'ESTADO ENVIO'
+COLUMN NUM_SEGUIMIENTO FORMAT A16          HEADING 'NUM SEGUIMIENTO'
+
+SELECT
+    pe.ID_PEDIDO,
+    cl.NOMBRE || ' ' || cl.APELLIDO        AS CLIENTE,
+    pr.NOMBRE                              AS PRODUCTO,
+    dp.CANTIDAD,
+    dp.CANTIDAD * dp.PRECIO_UNITARIO       AS SUBTOTAL,
+    ve.NOMBRE || ' ' || ve.APELLIDO        AS VENDEDOR,
+    mp.NOMBRE                              AS METODO_PAGO,
+    NVL(en.ESTADO, 'SIN ENVIO')            AS ESTADO_ENVIO,
+    NVL(en.NUM_SEGUIMIENTO, '-')           AS NUM_SEGUIMIENTO
+FROM PEDIDOS            pe
+JOIN CLIENTES           cl ON pe.ID_CLIENTE  = cl.ID_CLIENTE
+JOIN DETALLE_PEDIDOS    dp ON pe.ID_PEDIDO   = dp.ID_PEDIDO
+JOIN PRODUCTOS          pr ON dp.ID_PRODUCTO = pr.ID_PRODUCTO
+JOIN VENDEDORES         ve ON pr.ID_VENDEDOR = ve.ID_VENDEDOR
+JOIN PAGOS              pa ON pe.ID_PEDIDO   = pa.ID_PEDIDO
+JOIN METODOS_PAGO       mp ON pa.ID_METODO   = mp.ID_METODO
+LEFT JOIN ENVIOS        en ON pe.ID_PEDIDO   = en.ID_PEDIDO
+ORDER BY pe.ID_PEDIDO, dp.ID_DETALLE;
+
+
+-- ──────────────────────────────────────────────────────────────
+-- REPORTE 2: Total facturado por vendedor
+-- ──────────────────────────────────────────────────────────────
+COLUMN VENDEDOR          FORMAT A22         HEADING 'VENDEDOR'
+COLUMN CALIFICACION      FORMAT 9.9         HEADING 'CALIF'
+COLUMN TOTAL_PEDIDOS     FORMAT 9999        HEADING 'PEDIDOS'
+COLUMN UNIDADES_VENDIDAS FORMAT 9999        HEADING 'UNIDADES'
+COLUMN TOTAL_FACTURADO   FORMAT 999,999,999 HEADING 'TOTAL FACTURADO'
+COLUMN PROMEDIO_LINEA    FORMAT 999,999,999 HEADING 'PROMEDIO/LINEA'
+
+SELECT
+    ve.NOMBRE || ' ' || ve.APELLIDO        AS VENDEDOR,
+    ve.CALIFICACION,
+    COUNT(DISTINCT pe.ID_PEDIDO)           AS TOTAL_PEDIDOS,
+    SUM(dp.CANTIDAD)                       AS UNIDADES_VENDIDAS,
+    SUM(dp.CANTIDAD * dp.PRECIO_UNITARIO)  AS TOTAL_FACTURADO,
+    ROUND(AVG(dp.CANTIDAD * dp.PRECIO_UNITARIO), 2) AS PROMEDIO_LINEA
+FROM VENDEDORES         ve
+JOIN PRODUCTOS          pr ON ve.ID_VENDEDOR  = pr.ID_VENDEDOR
+JOIN DETALLE_PEDIDOS    dp ON pr.ID_PRODUCTO  = dp.ID_PRODUCTO
+JOIN PEDIDOS            pe ON dp.ID_PEDIDO    = pe.ID_PEDIDO
+JOIN CATEGORIAS         ca ON pr.ID_CATEGORIA = ca.ID_CATEGORIA
+WHERE pe.ESTADO != 'CANCELADO'
+GROUP BY ve.ID_VENDEDOR, ve.NOMBRE, ve.APELLIDO, ve.CALIFICACION
+ORDER BY TOTAL_FACTURADO DESC;
+
+
+-- ──────────────────────────────────────────────────────────────
+-- REPORTE 3: Productos mas vendidos por categoria
+-- ──────────────────────────────────────────────────────────────
+COLUMN CATEGORIA         FORMAT A14         HEADING 'CATEGORIA'
+COLUMN PRODUCTO          FORMAT A24         HEADING 'PRODUCTO'
+COLUMN VENDEDOR          FORMAT A18         HEADING 'VENDEDOR'
+COLUMN PRECIO_UNITARIO   FORMAT 999,999,999 HEADING 'PRECIO'
+COLUMN UNIDADES_VENDIDAS FORMAT 9999        HEADING 'UNIDADES'
+COLUMN INGRESOS          FORMAT 999,999,999 HEADING 'INGRESOS'
+COLUMN EN_PEDIDOS        FORMAT 9999        HEADING 'EN PEDIDOS'
+
+SELECT
+    ca.NOMBRE                              AS CATEGORIA,
+    pr.NOMBRE                              AS PRODUCTO,
+    ve.NOMBRE || ' ' || ve.APELLIDO        AS VENDEDOR,
+    pr.PRECIO                              AS PRECIO_UNITARIO,
+    SUM(dp.CANTIDAD)                       AS UNIDADES_VENDIDAS,
+    SUM(dp.CANTIDAD * dp.PRECIO_UNITARIO)  AS INGRESOS,
+    COUNT(DISTINCT pe.ID_PEDIDO)           AS EN_PEDIDOS
+FROM CATEGORIAS         ca
+JOIN PRODUCTOS          pr ON ca.ID_CATEGORIA = pr.ID_CATEGORIA
+JOIN DETALLE_PEDIDOS    dp ON pr.ID_PRODUCTO  = dp.ID_PRODUCTO
+JOIN PEDIDOS            pe ON dp.ID_PEDIDO    = pe.ID_PEDIDO
+JOIN VENDEDORES         ve ON pr.ID_VENDEDOR  = ve.ID_VENDEDOR
+WHERE pe.ESTADO != 'CANCELADO'
+GROUP BY
+    ca.ID_CATEGORIA, ca.NOMBRE,
+    pr.ID_PRODUCTO,  pr.NOMBRE, pr.PRECIO,
+    ve.NOMBRE, ve.APELLIDO
+ORDER BY ca.NOMBRE, UNIDADES_VENDIDAS DESC;
+
+
+-- ──────────────────────────────────────────────────────────────
+-- REPORTE 4: Clientes con mayor volumen de compras
+-- ──────────────────────────────────────────────────────────────
+COLUMN CLIENTE           FORMAT A22         HEADING 'CLIENTE'
+COLUMN EMAIL             FORMAT A28         HEADING 'EMAIL'
+COLUMN TOTAL_PEDIDOS     FORMAT 9999        HEADING 'PEDIDOS'
+COLUMN UNIDADES          FORMAT 9999        HEADING 'UNIDADES'
+COLUMN TOTAL_GASTADO     FORMAT 999,999,999 HEADING 'TOTAL GASTADO'
+COLUMN TICKET_PROMEDIO   FORMAT 999,999,999 HEADING 'TICKET PROM'
+COLUMN ULTIMA_COMPRA     FORMAT A12         HEADING 'ULT COMPRA'
+
+SELECT
+    cl.NOMBRE || ' ' || cl.APELLIDO        AS CLIENTE,
+    LOWER(cl.EMAIL)                        AS EMAIL,
+    COUNT(DISTINCT pe.ID_PEDIDO)           AS TOTAL_PEDIDOS,
+    SUM(dp.CANTIDAD)                       AS UNIDADES,
+    SUM(dp.CANTIDAD * dp.PRECIO_UNITARIO)  AS TOTAL_GASTADO,
+    ROUND(AVG(dp.CANTIDAD * dp.PRECIO_UNITARIO), 2) AS TICKET_PROMEDIO,
+    TO_CHAR(MAX(pe.FECHA_PEDIDO), 'DD/MM/YYYY') AS ULTIMA_COMPRA
+FROM CLIENTES           cl
+JOIN PEDIDOS            pe ON cl.ID_CLIENTE = pe.ID_CLIENTE
+JOIN DETALLE_PEDIDOS    dp ON pe.ID_PEDIDO  = dp.ID_PEDIDO
+JOIN PAGOS              pa ON pe.ID_PEDIDO  = pa.ID_PEDIDO
+JOIN METODOS_PAGO       mp ON pa.ID_METODO  = mp.ID_METODO
+WHERE pe.ESTADO != 'CANCELADO'
+GROUP BY cl.ID_CLIENTE, cl.NOMBRE, cl.APELLIDO, cl.EMAIL
+ORDER BY TOTAL_GASTADO DESC;
